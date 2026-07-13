@@ -13,10 +13,10 @@ I have thoroughly tested this mod in daily use and it works flawlessly.
 Below is the source code for the mod. Thank you for your amazing work on Windhawk!
 
 // ==WindhawkMod==
-// @id              fix-saveas-hover-selective
+// @id              fix-saveas-hover-v2
 // @name            Fix Save As Mouse Hover - Selective Click
 // @description     Ignores accidental mouse hover file selection in Save As dialogs but allows intentional selection via a single click.
-// @version         1.0
+// @version         1.3
 // @author          raonte
 // @github          https://github.com/raonte
 // @include         explorer.exe
@@ -37,31 +37,40 @@ LRESULT CALLBACK NewListViewProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
     if (uMsg == WM_NOTIFY) {
         LPNMHDR lpnmh = (LPNMHDR)lParam;
         if (lpnmh) {
-            // Block accidental selection via mouse hover (Hot Tracking)
+            // 1. Blocchiamo il passaggio del mouse involontario (Hot Track)
             if (lpnmh->code == LVN_HOTTRACK) {
                 return 1; 
             }
-            // Allow intentional file selection via click or keyboard arrows
+            // 2. Lasciamo passare le notifiche di selezione reale (clic del mouse o freccia tastiera)
             if (lpnmh->code == LVN_ITEMCHANGED) {
                 NMLISTVIEW* pnmv = (NMLISTVIEW*)lParam;
                 if (pnmv && (pnmv->uNewState & LVIS_SELECTED)) {
-                    // Let Windows handle the selection normally
+                    // Lasciamo che Windows gestisca il click normalmente
                 }
             }
         }
     }
-    if (pDefSubclassProc) return pDefSubclassProc(hWnd, uMsg, wParam, lParam);
+    if (pDefSubclassProc) {
+        return pDefSubclassProc(hWnd, uMsg, wParam, lParam);
+    }
     return DefWindowProc(hWnd, uMsg, wParam, lParam);
 }
 
 using CreateWindowExW_t = decltype(&CreateWindowExW);
 CreateWindowExW_t CreateWindowExW_Original;
 
-HWND WINAPI CreateWindowExW_Hook(DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam) {
+HWND WINAPI CreateWindowExW_Hook(
+    DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName, DWORD dwStyle,
+    int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu,
+    HINSTANCE hInstance, LPVOID lpParam) {
+    
     HWND hWnd = CreateWindowExW_Original(dwExStyle, lpClassName, lpWindowName, dwStyle, X, Y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
+
     if (hWnd && lpClassName && (ULONG_PTR)lpClassName > 0xFFFF) {
         if (wcscmp(lpClassName, L"SysListView32") == 0 || wcscmp(lpClassName, L"ItemsView") == 0) {
-            if (pSetWindowSubclass) pSetWindowSubclass(hWnd, NewListViewProc, 1, 0);
+            if (pSetWindowSubclass) {
+                pSetWindowSubclass(hWnd, NewListViewProc, 1, 0);
+            }
         }
     }
     return hWnd;
@@ -70,10 +79,12 @@ HWND WINAPI CreateWindowExW_Hook(DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR l
 BOOL Wh_ModInit() {
     HMODULE hComCtl = GetModuleHandle(L"comctl32.dll");
     if (!hComCtl) hComCtl = LoadLibrary(L"comctl32.dll");
+
     if (hComCtl) {
         pSetWindowSubclass = (SetWindowSubclass_t)GetProcAddress(hComCtl, "SetWindowSubclass");
         pDefSubclassProc = (DefSubclassProc_t)GetProcAddress(hComCtl, "DefSubclassProc");
     }
+
     Wh_SetFunctionHook((void*)CreateWindowExW, (void*)CreateWindowExW_Hook, (void**)&CreateWindowExW_Original);
     return TRUE;
 }
